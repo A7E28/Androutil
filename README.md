@@ -1,24 +1,21 @@
-# ADB Installer
+# Android Util
 
 ## Description
 
-This script simplifies the installation process of platform-tools for Android Debug Bridge (ADB).
+This application provides utility for android. As of now there's not much to offer.
+## Utilities
+- Platform-Tools
+- Hash algorithm for file checksums.
 
-## Usage
+## Download And Run
 
-### Download
-
-1. **Clone the repository and build it** or download the executable from the releases section to your local machine.
-
-## Requirements
+### Requirements
 
 - Eyes and Brain.
-- Golang if you want to build.
 
-## RUN
-- Please ensure to download the correct version (32-bit or 64-bit) according to your system architecture.
-  Just double click on the exe and it will do the rest for you.
-- If you want to build it yourself then just run ``` go build -o <name> . ``` from the installer dir
+### RUN
+- Download the executable from the [releases](https://github.com/A7E28/Androutil/releases) section. Please ensure to download the correct version (32-bit or 64-bit) according to your system architecture and run it. Windows might warn you, just run anyway.
+
 
 ## Contributing
 
