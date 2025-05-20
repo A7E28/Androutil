@@ -1,4 +1,7 @@
-# Android Util
+# Android Utility
+<p align="center">
+  <img src="assets/au.png" alt="au.png" style="margin-left: 20px;">
+</p>
 
 ## Description
 
