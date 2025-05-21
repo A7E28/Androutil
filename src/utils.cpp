@@ -1,4 +1,5 @@
 #include "../include/utils.h"
+#include "../include/miniz.h"
 #include <iostream>
 #include <windows.h>
 #include <urlmon.h>
@@ -10,26 +11,7 @@
 #include <wincrypt.h>
 #include <shlwapi.h>
 #include <comdef.h>
-
-#include <shldisp.h>    
-#include <shobjidl.h>   
-#include <exdisp.h>    
-#include <objbase.h>   
-
-//COM interface IDs
-#include <initguid.h>
-#include <shlguid.h>      
-
-
-#ifndef CLSID_Shell
-DEFINE_GUID(CLSID_Shell, 
-0x13709620, 0xc279, 0x11ce, 0xa4, 0x9e, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00);
-#endif
-
-#ifndef IID_IShellDispatch
-DEFINE_GUID(IID_IShellDispatch,
-0xd8f015c0, 0xc278, 0x11ce, 0xa4, 0x9e, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00);
-#endif
+#include <algorithm>
 
 namespace utils {
 
@@ -46,77 +28,67 @@ bool downloadFile(const std::string& url, const std::string& outputPath) {
 }
 
 bool extractZip(const std::string& zipPath, const std::string& destPath) {
-    std::filesystem::create_directories(destPath);
-    
-    bool success = false;
-    
-    HRESULT hr = CoInitialize(NULL);
-    if (FAILED(hr)) return false;
-    
-    wchar_t wszZipPath[MAX_PATH];
-    wchar_t wszDestPath[MAX_PATH];
-    
-    MultiByteToWideChar(CP_ACP, 0, zipPath.c_str(), -1, wszZipPath, MAX_PATH);
-    MultiByteToWideChar(CP_ACP, 0, destPath.c_str(), -1, wszDestPath, MAX_PATH);
-    
-    IShellDispatch* pShell = NULL;
-    hr = CoCreateInstance(CLSID_Shell, NULL, CLSCTX_INPROC_SERVER, IID_IShellDispatch, (void**)&pShell);
-    
-    if (SUCCEEDED(hr)) {
-        Folder* pZipFolder = NULL;
-        VARIANT vZipPath;
-        VariantInit(&vZipPath);
-        vZipPath.vt = VT_BSTR;
-        vZipPath.bstrVal = SysAllocString(wszZipPath);
-        
-        hr = pShell->NameSpace(vZipPath, &pZipFolder);
-        
-        if (SUCCEEDED(hr) && pZipFolder) {
-            Folder* pDestFolder = NULL;
-            VARIANT vDestPath;
-            VariantInit(&vDestPath);
-            vDestPath.vt = VT_BSTR;
-            vDestPath.bstrVal = SysAllocString(wszDestPath);
-            
-            hr = pShell->NameSpace(vDestPath, &pDestFolder);
-            
-            if (SUCCEEDED(hr) && pDestFolder) {
-                FolderItems* pZipItems = NULL;
-                hr = pZipFolder->Items(&pZipItems);
-                
-                if (SUCCEEDED(hr) && pZipItems) {
-                    VARIANT vOptions, vItems;
-                    VariantInit(&vOptions);
-                    VariantInit(&vItems);
-                    
-                    vOptions.vt = VT_I4;
-                    vOptions.lVal = 16; // FOF_NO_UI = 16
-                    
-                    vItems.vt = VT_DISPATCH;
-                    vItems.pdispVal = pZipItems;
-                    
-                    hr = pDestFolder->CopyHere(vItems, vOptions);
-                    
-                    success = SUCCEEDED(hr);
-                    
-                    VariantClear(&vItems);
-                    VariantClear(&vOptions);
-                    pZipItems->Release();
-                }
-                
-                pDestFolder->Release();
-                VariantClear(&vDestPath);
-            }
-            
-            pZipFolder->Release();
-            VariantClear(&vZipPath);
-        }
-        
-        pShell->Release();
+    try {
+        std::filesystem::create_directories(destPath);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create directory: " << e.what() << std::endl;
+        return false;
     }
     
-    CoUninitialize();
-    return success;
+    mz_zip_archive zip_archive = {};
+
+    if (!mz_zip_reader_init_file(&zip_archive, zipPath.c_str(), 0)) {
+        std::cerr << "Failed to open zip file: " << zipPath << std::endl;
+        return false;
+    }
+
+    mz_uint numFiles = mz_zip_reader_get_num_files(&zip_archive);
+    
+    for (mz_uint i = 0; i < numFiles; i++) {
+        mz_zip_archive_file_stat file_stat = {};
+        
+        if (!mz_zip_reader_file_stat(&zip_archive, i, &file_stat)) {
+            std::cerr << "Failed to get file stats for file #" << i << std::endl;
+            mz_zip_reader_end(&zip_archive);
+            return false;
+        }
+        
+
+        if (file_stat.m_is_directory) {
+            std::string dirPath = destPath + "/" + file_stat.m_filename;
+            std::replace(dirPath.begin(), dirPath.end(), '/', '\\'); 
+            try {
+                std::filesystem::create_directories(dirPath);
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to create directory " << dirPath << ": " << e.what() << std::endl;
+                mz_zip_reader_end(&zip_archive);
+                return false;
+            }
+            continue;
+        }
+        
+
+        std::string outPath = destPath + "/" + file_stat.m_filename;
+        std::replace(outPath.begin(), outPath.end(), '/', '\\'); 
+        
+        std::string parent = outPath.substr(0, outPath.find_last_of("/\\"));
+        try {
+            std::filesystem::create_directories(parent);
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to create parent directory " << parent << ": " << e.what() << std::endl;
+            mz_zip_reader_end(&zip_archive);
+            return false;
+        }
+        
+        if (!mz_zip_reader_extract_to_file(&zip_archive, i, outPath.c_str(), 0)) {
+            std::cerr << "Failed to extract file: " << outPath << std::endl;
+            mz_zip_reader_end(&zip_archive);
+            return false;
+        }
+    }
+    
+    mz_zip_reader_end(&zip_archive);
+    return true;
 }
 
 std::optional<std::string> executeCommand(const std::string& command) {
@@ -173,12 +145,12 @@ std::string calculateFileHash(const std::string& filePath, HashAlgorithm algorit
 
     HCRYPTPROV hProv = 0;
     HCRYPTHASH hHash = 0;
-    BYTE hashBuffer[64] = {0};
+    BYTE hashBuffer[64] = {0}; 
     DWORD hashSize = 0;
     std::string result = "";
 
     file.seekg(0, std::ios::beg);
-    std::vector<BYTE> buffer(8192); // 8KB chunks
+    std::vector<BYTE> buffer(4096);
 
     if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) {
         return "";
@@ -204,7 +176,6 @@ std::string calculateFileHash(const std::string& filePath, HashAlgorithm algorit
 
     hashSize = sizeof(hashBuffer);
     if (CryptGetHashParam(hHash, HP_HASHVAL, hashBuffer, &hashSize, 0)) {
-        // Convert to hex string
         std::stringstream ss;
         for (DWORD i = 0; i < hashSize; i++) {
             ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hashBuffer[i]);

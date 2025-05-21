@@ -1,3 +1,7 @@
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+
 #include <iostream>
 #include <string>
 #include <limits> 
@@ -41,7 +45,6 @@ void verifyChecksum() {
     
     std::cout << "Selected file: " << filePath << std::endl;
     
-    // Hash algorithm selection
     int hashChoice = 0;
     std::cout << "\nSelect hash algorithm:\n";
     std::cout << "1. MD5\n";
@@ -56,7 +59,7 @@ void verifyChecksum() {
         try {
             hashChoice = std::stoi(choiceInput);
             if (hashChoice < 1 || hashChoice > 3) {
-                hashChoice = 3; 
+                hashChoice = 3;
             }
         } catch (...) {
             hashChoice = 3; 

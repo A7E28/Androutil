@@ -47,7 +47,6 @@ AdbInfo checkAdbInstallation() {
 }
 
 std::optional<std::string> getLatestAdbVersion() {
-    // URL for the repository XML
     const std::string repoUrl = "https://dl.google.com/android/repository/repository2-1.xml";
     
     std::string tempDir = std::filesystem::temp_directory_path().string();
@@ -108,15 +107,20 @@ bool installAdb() {
     }
 
     std::string downloadPath = home + "\\Downloads\\platform-tools.zip";
-    std::string extractPath = home; 
+    std::string extractPath = home;
     
-    std::cout << "Downloading platform-tools...\n";
+    std::cout << "Downloading ADB platform-tools...\n";
     if (!utils::downloadFile(url, downloadPath)) {
         std::cerr << "Download failed.\n";
         return false;
     }
 
-    std::cout << "Extracting...\n";
+    if (!std::filesystem::exists(downloadPath)) {
+        std::cerr << "Downloaded file doesn't exist at path: " << downloadPath << "\n";
+        return false;
+    }
+    
+    std::cout << "Extracting ADB tools...\n";
     if (!utils::extractZip(downloadPath, extractPath)) {
         std::cerr << "Extraction failed.\n";
         return false;
@@ -124,19 +128,28 @@ bool installAdb() {
 
     std::string platformToolsPath = home + "\\platform-tools";
     
-    std::cout << "Updating PATH...\n";
+    std::cout << "Updating system PATH...\n";
     if (!path_manager::addToPath(platformToolsPath)) {
         std::cerr << "Failed to update PATH in registry.\n";
         return false;
     }
 
-    std::cout << "Platform-tools ready. Restart your terminal or re-login to apply PATH changes.\n";
+    try {
+        std::cout << "Cleaning up temporary files...\n";
+        std::filesystem::remove(downloadPath);
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Could not delete temporary file " << downloadPath << ": " << e.what() << "\n";
+    }
+
+    std::cout << "ADB platform-tools installed successfully.\n";
+    std::cout << "Note: You may need to restart your terminal or re-login to use ADB commands.\n";
     return true;
 }
 
 bool updateAdb() {
     AdbInfo currentAdb = checkAdbInstallation();
     if (!currentAdb.installed) {
+        std::cout << "ADB not found. Installing...\n";
         return installAdb();
     }
     
@@ -164,7 +177,8 @@ bool updateAdb() {
     
     std::cout << "Current ADB version: " << currentAdb.version << "\n";
     std::cout << "Latest ADB version: " << latestVersion.value() << "\n";
+    std::cout << "Updating ADB...\n";
     return installAdb();
 }
 
-} 
+}
